@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MaintenanceManagementSystem.Api/MaintenanceManagementSystem.Api.csproj" />
+  </Folder>
+</Solution>
