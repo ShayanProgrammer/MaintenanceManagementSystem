@@ -1,0 +1,45 @@
+.request-list {
+  max-width: 72rem;
+  margin: 2rem auto;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.success {
+  color: #1a7f37;
+}
+
+.error {
+  color: #c0392b;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 1rem;
+}
+
+th,
+td {
+  border: 1px solid #ddd;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f5f5f5;
+}
+
+.number {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.description {
+  max-width: 22rem;
+}

@@ -623,4 +623,22 @@ beyond SQL Server + the API host.
   relative path later, and prevents leaking the token to third-party
   origins if external URLs are ever requested.
 
+## 45. Request list/create stay thin: the server's status is displayed, never computed
+
+- **Decision:** The phase 9.2 client screens (request list, create form)
+  contain no workflow logic: the create payload is exactly the backend's
+  `CreateMaintenanceRequestRequest` (siteId, title, description,
+  estimatedCost — no organization/user/status fields), and after creation
+  the UI shows the status the API returned. Form validation mirrors only
+  the DTO's boundary rules (required, lengths, whitespace-only rejection,
+  cost >= 0), not business rules; the approval threshold is never
+  evaluated client-side.
+- **Reason:** Any client-side threshold or status computation would be a
+  second source of truth that can drift from the backend. Verified
+  server behavior: 250.00 auto-approves (system decision,
+  approvedByUserId null), 1500.00 stays PendingApproval (Northgate
+  threshold 1000), while 2400.00 auto-approves under Summit's 2500
+  threshold — per-organization decisions the frontend merely renders.
+
+
 

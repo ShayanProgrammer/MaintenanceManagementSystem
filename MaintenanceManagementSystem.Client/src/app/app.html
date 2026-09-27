@@ -2,6 +2,11 @@
   <span class="brand">Maintenance Management System</span>
 
   @if (user(); as u) {
+    <nav class="shell-nav">
+      <a routerLink="/requests">Requests</a>
+      <a routerLink="/requests/new">New request</a>
+    </nav>
+
     <span class="identity">
       {{ u.email }} · {{ u.role }}
       <button type="button" (click)="logout()">Log out</button>

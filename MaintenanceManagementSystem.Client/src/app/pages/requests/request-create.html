@@ -1,0 +1,78 @@
+<section class="request-create">
+  <h1>New maintenance request</h1>
+
+  @if (loadError(); as message) {
+    <p class="error">{{ message }}</p>
+    <button type="button" (click)="retry()">Retry</button>
+  } @else if (sites() === null) {
+    <p>Loading sites…</p>
+  } @else {
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <label for="siteId">Site</label>
+      <select id="siteId" formControlName="siteId">
+        <option [ngValue]="null" disabled>Select a site…</option>
+        @for (s of sites(); track s.id) {
+          <option [ngValue]="s.id">{{ s.name }}</option>
+        }
+      </select>
+      @if (show(form.controls.siteId)) {
+        <p class="field-error">Site is required.</p>
+      }
+
+      <label for="title">Title</label>
+      <input id="title" formControlName="title" maxlength="200" />
+      @if (show(form.controls.title)) {
+        <p class="field-error">
+          @if (form.controls.title.errors?.['required']) {
+            Title is required.
+          } @else if (form.controls.title.errors?.['whitespace']) {
+            Title cannot consist of whitespace only.
+          } @else if (form.controls.title.errors?.['maxlength']) {
+            Title must be at most 200 characters.
+          }
+        </p>
+      }
+
+      <label for="description">Description</label>
+      <textarea id="description" formControlName="description" rows="4"
+                maxlength="2000"></textarea>
+      @if (show(form.controls.description)) {
+        <p class="field-error">
+          @if (form.controls.description.errors?.['required']) {
+            Description is required.
+          } @else if (form.controls.description.errors?.['whitespace']) {
+            Description cannot consist of whitespace only.
+          } @else if (form.controls.description.errors?.['maxlength']) {
+            Description must be at most 2000 characters.
+          }
+        </p>
+      }
+
+      <label for="estimatedCost">Estimated cost</label>
+      <input id="estimatedCost" formControlName="estimatedCost" type="number"
+             min="0" step="0.01" />
+      @if (show(form.controls.estimatedCost)) {
+        <p class="field-error">
+          @if (form.controls.estimatedCost.errors?.['required']) {
+            Estimated cost is required.
+          } @else if (form.controls.estimatedCost.errors?.['min']) {
+            Estimated cost cannot be negative.
+          } @else if (form.controls.estimatedCost.errors?.['max']) {
+            Estimated cost is too large.
+          }
+        </p>
+      }
+
+      @if (errorMessage(); as message) {
+        <p class="error">{{ message }}</p>
+      }
+
+      <div class="actions">
+        <button type="submit" [disabled]="submitting()">
+          {{ submitting() ? 'Creating…' : 'Create request' }}
+        </button>
+        <a routerLink="/requests">Cancel</a>
+      </div>
+    </form>
+  }
+</section>

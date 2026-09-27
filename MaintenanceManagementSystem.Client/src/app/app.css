@@ -11,6 +11,11 @@
   font-weight: 600;
 }
 
+.shell-nav {
+  display: flex;
+  gap: 1rem;
+}
+
 .identity button {
   margin-left: 0.75rem;
 }
