@@ -397,3 +397,93 @@ beyond SQL Server + the API host.
   approval decisions; keeping `AuditEntry` request-specific matches that
   requirement without inventing a second audit subsystem the evaluation
   does not ask for.
+
+---
+
+# Phase 5 additions (approval, rejection, completion, editing)
+
+## 32. Manual approval and rejection: one endpoint, resource rules in the service
+
+- **Decision:** `POST /api/maintenance-requests/{id}/approvals` with
+  `{ decision: "approve" | "reject", reason? }` (case-insensitive enum
+  binding; anything else is a 400 at the boundary). The endpoint carries
+  the `ApproverOnly` policy (a Requester gets 403 from authorization,
+  before any business logic). The service enforces the resource rules:
+  the approver must belong to the request's organization (tenant-scoped
+  lookup — a foreign id is **404**, indistinguishable from unknown), must
+  **not be the raiser** (**403** even with the Approver role), and the
+  request must be `PendingApproval` (**409 Conflict** — auto-approved or
+  already-decided requests cannot be decided again). Approval sets
+  `ApprovedByUserId`, `ApprovedAtUtc`, clears `RejectionReason`; rejection
+  keeps `ApprovedByUserId`/`ApprovedAtUtc` null and saves the reason.
+- **Reason:** Role policy and resource ownership are different layers;
+  splitting them keeps the endpoint gate cheap while the service remains
+  the single authority over who may touch which request. 409 distinguishes
+  "exists but wrong state" from 404 "does not exist for you" without
+  leaking anything across tenants.
+
+## 33. Rejection requires a reason
+
+- **Decision:** The reason is mandatory and non-blank (checked at the
+  boundary → 400) with a 1000-character maximum matching the entity's
+  `RejectionReason` column, and is stored both on the request and in the
+  audit entry's `Details`.
+- **Reason:** A rejection without a stated reason defeats the purpose of
+  the field; the column-length match removes silent truncation.
+
+## 34. Completion belongs to the raiser alone; actual cost never re-runs approval
+
+- **Decision:** `POST /api/maintenance-requests/{id}/completion` requires
+  the caller to be the **original raiser** (403 for anyone else — the
+  Approver role grants no completion rights over others' requests) and the
+  request to be `Approved` (409 for PendingApproval/Rejected/Completed —
+  terminal states are not repeatable). `ActualCost` is required, >= 0, and
+  recorded with `CompletedAtUtc`; per decision 8, an actual cost above the
+  estimate or the current threshold triggers **no second approval
+  workflow** — the variance belongs to spend reporting. An auto-approved
+  request is completable by its raiser exactly like a manually approved
+  one.
+- **Reason:** The raiser closes out their own work; separating "who
+  completes" from roles keeps the rule about authorship, and keeping
+  actual cost outside approval avoids a re-approval loop with no
+  requirement behind it (decision 8).
+
+## 35. Editing: raiser-only, PendingApproval-only, threshold re-evaluated on cost change
+
+- **Decision:** `PUT /api/maintenance-requests/{id}` has exactly the
+  create DTO's shape and validation (no workflow-owned fields exist to
+  smuggle). Only the raiser may edit (an Approver has no special rights,
+  403) and only while `PendingApproval` (409 once
+  Approved/Rejected/Completed). The new `SiteId` must belong to the
+  caller's organization (foreign/unknown → 404). If `EstimatedCost`
+  **changes**, the organization's **current** threshold is re-evaluated:
+  at or below it the request is auto-approved as a system decision
+  (`ApprovedByUserId` null, system `AutoApproved` audit entry, actor null,
+  threshold named in `Details`); above it the request stays
+  `PendingApproval` with no audit noise. A cost-unchanged edit does not
+  re-evaluate the threshold (no surprise auto-approval on a title-only
+  edit). `PendingApproval` has no transition to `Rejected`/`Completed` in
+  the lifecycle map, so an edit can never produce those states.
+- **Reason:** The threshold rule must have one definition across creation
+  and editing; evaluating only on real cost changes keeps edits
+  predictable while still letting a corrected estimate resolve the queue.
+
+## 36. Status-preserving edits are not audited
+
+- **Decision:** Only state transitions and approval decisions produce
+  audit entries (decision 10's scope). An edit that leaves the request in
+  `PendingApproval` writes nothing; an edit that triggers auto-approval
+  writes exactly the `AutoApproved` entry, whose `Details` name the new
+  cost and threshold. There are no audit read/update/delete endpoints at
+  all.
+- **Reason:** Keeps the trail meaningful instead of noisy; the request row
+  itself is the record of current field values, and every status path to
+  `Approved` remains uniformly audited (decision 7).
+
+## 37. No schema migration in phase 5
+
+- **Decision:** No new migration. All workflow fields
+  (`ApprovedByUserId`, `RejectionReason`, `ActualCost`, timestamps) and
+  the terminal-state model existed from phase 1; phase 5 only exercises
+  them.
+- **Reason:** The migration history stays truthful.

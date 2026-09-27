@@ -8,6 +8,27 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MaintenanceManagementSystem.Api.Services;
 
+/// <summary>Outcome of a workflow mutation (approve/reject/complete/edit).
+/// Foreign or unknown ids are indistinguishable (NotFound); a same-tenant
+/// caller without permission is Forbidden; a valid request in a state that
+/// does not allow the operation is InvalidState.</summary>
+public enum RequestMutationStatus
+{
+    Ok,
+    NotFound,
+    Forbidden,
+    InvalidState
+}
+
+/// <summary>Result of a workflow mutation; <see cref="Request"/> is the
+/// updated request when <see cref="RequestMutationStatus"/> is Ok.</summary>
+public record RequestMutationResult(RequestMutationStatus Status, MaintenanceRequestDto? Request = null)
+{
+    public static readonly RequestMutationResult NotFound = new(RequestMutationStatus.NotFound);
+    public static readonly RequestMutationResult Forbidden = new(RequestMutationStatus.Forbidden);
+    public static readonly RequestMutationResult InvalidState = new(RequestMutationStatus.InvalidState);
+}
+
 /// <summary>
 /// Creation and listing of maintenance requests, scoped to the authenticated
 /// user's organization. The approval threshold rule is evaluated at creation:
@@ -124,10 +145,236 @@ public class MaintenanceRequestService
         // atomically; the navigation property supplies the request id FK.
         await _db.SaveChangesAsync();
 
-        return await Project(_db.MaintenanceRequests
-                .Where(r => r.Id == maintenanceRequest.Id))
-            .SingleAsync();
+        return await ProjectByIdAsync(maintenanceRequest.Id);
     }
+
+    /// <summary>
+    /// Applies a manual approver decision (approve or reject) to a
+    /// PendingApproval request of the caller's organization. The endpoint
+    /// policy already guarantees the Approver role; the service enforces the
+    /// resource rules: same organization (via the tenant-scoped lookup — a
+    /// foreign id is NotFound), never the raiser's own request, and only
+    /// from PendingApproval.
+    /// </summary>
+    public async Task<RequestMutationResult> DecideAsync(int id, ApprovalDecision decision, string? reason)
+    {
+        var organizationId = _tenant.RequireOrganizationId();
+        var userId = _tenant.RequireUserId();
+        var now = DateTime.UtcNow;
+
+        var maintenanceRequest = await _db.MaintenanceRequests.SingleOrDefaultAsync(r =>
+            r.Id == id
+            && r.OrganizationId == organizationId);
+        if (maintenanceRequest is null)
+        {
+            return RequestMutationResult.NotFound; // unknown OR another tenant's
+        }
+
+        // An approver may never decide their own request.
+        if (maintenanceRequest.RaisedByUserId == userId)
+        {
+            return RequestMutationResult.Forbidden;
+        }
+
+        // Only a request that is actually awaiting approval can be decided;
+        // auto-approved or already-decided requests are rejected here
+        // (409 at the endpoint).
+        if (maintenanceRequest.Status != RequestStatus.PendingApproval)
+        {
+            return RequestMutationResult.InvalidState;
+        }
+
+        switch (decision)
+        {
+            case ApprovalDecision.Approve:
+            {
+                var previousStatus = RequestLifecycle.ApplyTransition(
+                    maintenanceRequest, RequestStatus.Approved);
+
+                maintenanceRequest.ApprovedByUserId = userId;
+                maintenanceRequest.ApprovedAtUtc = now;
+                maintenanceRequest.RejectionReason = null;
+
+                _audit.Stage(
+                    maintenanceRequest,
+                    actorUserId: userId,
+                    action: AuditActions.Approved,
+                    previousStatus: previousStatus,
+                    newStatus: RequestStatus.Approved,
+                    details: "Manual approval by an organization approver.",
+                    now);
+                break;
+            }
+            case ApprovalDecision.Reject:
+            {
+                // The boundary already enforces a non-blank reason; the trim
+                // guards against whitespace-only values.
+                var trimmedReason = reason!.Trim();
+
+                var previousStatus = RequestLifecycle.ApplyTransition(
+                    maintenanceRequest, RequestStatus.Rejected);
+
+                // ApprovedByUserId/ApprovedAtUtc remain null on rejection;
+                // RejectionReason records why.
+                maintenanceRequest.RejectionReason = trimmedReason;
+
+                _audit.Stage(
+                    maintenanceRequest,
+                    actorUserId: userId,
+                    action: AuditActions.Rejected,
+                    previousStatus: previousStatus,
+                    newStatus: RequestStatus.Rejected,
+                    details: $"Rejection reason: {trimmedReason}",
+                    now);
+                break;
+            }
+            default:
+                return RequestMutationResult.InvalidState;
+        }
+
+        await _db.SaveChangesAsync();
+        return new RequestMutationResult(
+            RequestMutationStatus.Ok, await ProjectByIdAsync(maintenanceRequest.Id));
+    }
+
+    /// <summary>
+    /// Completes an Approved request. Only the original raiser may complete
+    /// it — the role is irrelevant; only authorship of the request counts.
+    /// The actual cost never re-runs the threshold rule (decision 8).
+    /// </summary>
+    public async Task<RequestMutationResult> CompleteAsync(int id, CreateCompletionRequest request)
+    {
+        var organizationId = _tenant.RequireOrganizationId();
+        var userId = _tenant.RequireUserId();
+        var now = DateTime.UtcNow;
+
+        var maintenanceRequest = await _db.MaintenanceRequests.SingleOrDefaultAsync(r =>
+            r.Id == id
+            && r.OrganizationId == organizationId);
+        if (maintenanceRequest is null)
+        {
+            return RequestMutationResult.NotFound; // unknown OR another tenant's
+        }
+
+        if (maintenanceRequest.RaisedByUserId != userId)
+        {
+            return RequestMutationResult.Forbidden; // only the raiser completes
+        }
+
+        if (maintenanceRequest.Status != RequestStatus.Approved)
+        {
+            return RequestMutationResult.InvalidState; // Pending/Rejected/Completed
+        }
+
+        var previousStatus = RequestLifecycle.ApplyTransition(
+            maintenanceRequest, RequestStatus.Completed);
+
+        maintenanceRequest.ActualCost = request.ActualCost!.Value;
+        maintenanceRequest.CompletedAtUtc = now;
+
+        _audit.Stage(
+            maintenanceRequest,
+            actorUserId: userId,
+            action: AuditActions.Completed,
+            previousStatus: previousStatus,
+            newStatus: RequestStatus.Completed,
+            details: $"Completed with actual cost {maintenanceRequest.ActualCost:0.00} (estimated {maintenanceRequest.EstimatedCost:0.00}).",
+            now);
+
+        await _db.SaveChangesAsync();
+        return new RequestMutationResult(
+            RequestMutationStatus.Ok, await ProjectByIdAsync(maintenanceRequest.Id));
+    }
+
+    /// <summary>
+    /// Edits a PendingApproval request. Only the raiser may edit, and only
+    /// while the request is PendingApproval. If the estimated cost changes,
+    /// the organization's current threshold is re-evaluated: at or below the
+    /// threshold the request is auto-approved as a system decision
+    /// (ApprovedByUserId stays null, system audit entry); above it the
+    /// request remains PendingApproval with no audit noise. The edit can
+    /// never move a request to Rejected or Completed — the lifecycle map
+    /// simply has no such transition from PendingApproval.
+    /// </summary>
+    public async Task<RequestMutationResult> UpdateAsync(int id, UpdateMaintenanceRequestRequest request)
+    {
+        var organizationId = _tenant.RequireOrganizationId();
+        var userId = _tenant.RequireUserId();
+        var now = DateTime.UtcNow;
+
+        var maintenanceRequest = await _db.MaintenanceRequests.SingleOrDefaultAsync(r =>
+            r.Id == id
+            && r.OrganizationId == organizationId);
+        if (maintenanceRequest is null)
+        {
+            return RequestMutationResult.NotFound; // unknown OR another tenant's
+        }
+
+        // Authorship, not role: an Approver has no special edit rights on
+        // someone else's request.
+        if (maintenanceRequest.RaisedByUserId != userId)
+        {
+            return RequestMutationResult.Forbidden;
+        }
+
+        if (maintenanceRequest.Status != RequestStatus.PendingApproval)
+        {
+            return RequestMutationResult.InvalidState; // Approved/Rejected/Completed
+        }
+
+        // The new site must belong to the caller's organization; a foreign
+        // or unknown site id is indistinguishable — both 404.
+        var site = await _db.Sites.SingleOrDefaultAsync(s =>
+            s.Id == request.SiteId!.Value
+            && s.OrganizationId == organizationId);
+        if (site is null)
+        {
+            return RequestMutationResult.NotFound;
+        }
+
+        var costChanged = maintenanceRequest.EstimatedCost != request.EstimatedCost!.Value;
+
+        maintenanceRequest.SiteId = site.Id;
+        maintenanceRequest.Title = request.Title.Trim();
+        maintenanceRequest.Description = request.Description!.Trim();
+        maintenanceRequest.EstimatedCost = request.EstimatedCost.Value;
+
+        if (costChanged)
+        {
+            // Re-evaluate the organization's current threshold (which may
+            // itself have changed since creation).
+            var organization = await _db.Organizations.SingleAsync(o => o.Id == organizationId);
+
+            if (maintenanceRequest.EstimatedCost <= organization.ApprovalThreshold)
+            {
+                var previousStatus = RequestLifecycle.ApplyTransition(
+                    maintenanceRequest, RequestStatus.Approved);
+
+                // System decision: no human approver, null audit actor.
+                maintenanceRequest.ApprovedAtUtc = now;
+
+                _audit.Stage(
+                    maintenanceRequest,
+                    actorUserId: null,
+                    action: AuditActions.AutoApproved,
+                    previousStatus: previousStatus,
+                    newStatus: RequestStatus.Approved,
+                    details: $"System auto-approved after edit: estimated cost {maintenanceRequest.EstimatedCost:0.00} is at or below the organization threshold {organization.ApprovalThreshold:0.00}.",
+                    now);
+            }
+            // Above the threshold: remains PendingApproval. No audit entry —
+            // only state changes and approval decisions are audited.
+        }
+
+        await _db.SaveChangesAsync();
+        return new RequestMutationResult(
+            RequestMutationStatus.Ok, await ProjectByIdAsync(maintenanceRequest.Id));
+    }
+
+    private async Task<MaintenanceRequestDto> ProjectByIdAsync(int id) =>
+        await Project(_db.MaintenanceRequests
+                .Where(r => r.Id == id))
+            .SingleAsync();
 
     /// <summary>Shared read shape for list and create responses.</summary>
     private static IQueryable<MaintenanceRequestDto> Project(IQueryable<MaintenanceRequest> requests) =>

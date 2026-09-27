@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using MaintenanceManagementSystem.Api.Domain.Enums;
 
 namespace MaintenanceManagementSystem.Api.Contracts;
 
@@ -12,6 +13,33 @@ public record CreateMaintenanceRequestRequest(
     [Required, StringLength(200, MinimumLength = 1)] string Title,
     [Required, StringLength(2000, MinimumLength = 1)] string Description,
     [Required, Range(0, 999_999_999_999.99)] decimal? EstimatedCost);
+
+// The edit DTO has exactly the same shape and validation as the create DTO.
+// All workflow-owned fields (Status, ActualCost, ApprovedByUserId, timestamps,
+// RejectionReason, OrganizationId, RaisedByUserId) are absent by construction:
+// they remain server-controlled.
+
+public record UpdateMaintenanceRequestRequest(
+    [Required, Range(1, int.MaxValue)] int? SiteId,
+    [Required, StringLength(200, MinimumLength = 1)] string Title,
+    [Required, StringLength(2000, MinimumLength = 1)] string Description,
+    [Required, Range(0, 999_999_999_999.99)] decimal? EstimatedCost);
+
+// Approval/rejection share one endpoint and one DTO. Decision binds as a
+// case-insensitive string ("approve"/"reject"); anything else is a 400 at
+// the boundary. Reason is required for Reject (checked at the boundary and
+// re-enforced in the service); max length matches the entity's
+// RejectionReason column (1000).
+
+public record CreateApprovalDecisionRequest(
+    [Required] ApprovalDecision? Decision,
+    [StringLength(1000)] string? Reason);
+
+// Completion records the actual cost. It never triggers a second approval
+// workflow, whatever its value (decision 8).
+
+public record CreateCompletionRequest(
+    [Required, Range(0, 999_999_999_999.99)] decimal? ActualCost);
 
 public record MaintenanceRequestDto(
     int Id,

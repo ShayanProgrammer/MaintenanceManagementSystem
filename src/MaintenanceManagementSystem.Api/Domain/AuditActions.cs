@@ -20,4 +20,18 @@ public static class AuditActions
     /// (Raised -> PendingApproval) because EstimatedCost exceeds the
     /// threshold. Actor is the creator.</summary>
     public const string SubmittedForApproval = "SubmittedForApproval";
+
+    /// <summary>Manual approval by an organization approver
+    /// (PendingApproval -> Approved). Actor is the approver.</summary>
+    public const string Approved = "Approved";
+
+    /// <summary>Manual rejection by an organization approver
+    /// (PendingApproval -> Rejected). Actor is the approver; details
+    /// contain the required rejection reason.</summary>
+    public const string Rejected = "Rejected";
+
+    /// <summary>Completion by the original raiser (Approved ->
+    /// Completed). Actor is the raiser; details contain the actual
+    /// cost.</summary>
+    public const string Completed = "Completed";
 }

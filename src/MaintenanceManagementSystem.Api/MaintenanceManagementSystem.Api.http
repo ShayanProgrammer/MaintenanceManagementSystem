@@ -128,5 +128,48 @@ Content-Type: application/json
   "estimatedCost": 50.00
 }
 
+### Edit a request (raiser only, PendingApproval only; cost change re-runs
+### the threshold rule — at/below threshold auto-approves as a system decision)
+PUT {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests/1
+Authorization: Bearer <raiser-token>
+Content-Type: application/json
+
+{
+  "siteId": 1,
+  "title": "HVAC compressor service (revised)",
+  "description": "Quieter bearing fitted",
+  "estimatedCost": 1000.00
+}
+
+### Approve a PendingApproval request (Approver only; not the raiser;
+### foreign org's id is 404; non-PendingApproval is 409)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests/1/approvals
+Authorization: Bearer <approver-token>
+Content-Type: application/json
+
+{
+  "decision": "approve"
+}
+
+### Reject a PendingApproval request (reason required, max 1000 chars)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests/1/approvals
+Authorization: Bearer <approver-token>
+Content-Type: application/json
+
+{
+  "decision": "reject",
+  "reason": "Estimated cost is too high for the current budget."
+}
+
+### Complete an Approved request (raiser only; actualCost >= 0 required;
+### never triggers another approval workflow)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests/1/completion
+Authorization: Bearer <raiser-token>
+Content-Type: application/json
+
+{
+  "actualCost": 950.00
+}
+
 ###
 
