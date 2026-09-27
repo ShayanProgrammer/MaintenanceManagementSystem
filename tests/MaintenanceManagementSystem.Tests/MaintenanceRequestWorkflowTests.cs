@@ -370,6 +370,20 @@ public class MaintenanceRequestWorkflowTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Missing_actual_cost_returns_400()
+    {
+        var alice = await ClientForAsync(Alice);
+        var auto = await CreateAsync(alice, HqTowerSiteId, "Missing actual cost", 250m);
+
+        var response = await alice.PostAsJsonAsync(
+            $"/api/maintenance-requests/{auto.Id}/completion",
+            new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null((await GetRequestAsync(alice, auto.Id)).CompletedAtUtc);
+    }
+
     // ------------------------------------------------------------------
     // Editing while PendingApproval
     // ------------------------------------------------------------------

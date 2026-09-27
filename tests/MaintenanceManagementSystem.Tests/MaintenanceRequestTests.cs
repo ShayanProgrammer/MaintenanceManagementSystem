@@ -183,6 +183,22 @@ public class MaintenanceRequestTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, missingCost.StatusCode);
     }
 
+    [Fact]
+    public async Task Whitespace_only_title_or_description_is_rejected()
+    {
+        var alice = await ClientForAsync(Alice);
+
+        // The service trims these fields, so whitespace-only input would
+        // otherwise be stored as an empty value.
+        var whitespaceTitle = await alice.PostAsJsonAsync("/api/maintenance-requests",
+            new CreateMaintenanceRequestRequest(HqTowerSiteId, "   ", "Created by test", 10m));
+        Assert.Equal(HttpStatusCode.BadRequest, whitespaceTitle.StatusCode);
+
+        var whitespaceDescription = await alice.PostAsJsonAsync("/api/maintenance-requests",
+            new CreateMaintenanceRequestRequest(HqTowerSiteId, "Valid title", "   ", 10m));
+        Assert.Equal(HttpStatusCode.BadRequest, whitespaceDescription.StatusCode);
+    }
+
     // ------------------------------------------------------------------
     // Site ownership and tenant isolation
     // ------------------------------------------------------------------

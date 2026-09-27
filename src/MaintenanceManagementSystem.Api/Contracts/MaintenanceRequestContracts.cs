@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using MaintenanceManagementSystem.Api.Domain.Enums;
+using MaintenanceManagementSystem.Api.Validation;
 
 namespace MaintenanceManagementSystem.Api.Contracts;
 
@@ -7,11 +8,13 @@ namespace MaintenanceManagementSystem.Api.Contracts;
 // RaisedByUserId, Status, timestamps): the server assigns them from the
 // authenticated identity and the threshold rule, so tenancy and workflow
 // state cannot be smuggled in through request JSON.
+// [NotWhitespace] rejects whitespace-only strings: the service trims
+// titles/descriptions, so "   " would otherwise be stored as an empty value.
 
 public record CreateMaintenanceRequestRequest(
     [Required, Range(1, int.MaxValue)] int? SiteId,
-    [Required, StringLength(200, MinimumLength = 1)] string Title,
-    [Required, StringLength(2000, MinimumLength = 1)] string Description,
+    [Required, StringLength(200, MinimumLength = 1), NotWhitespace] string Title,
+    [Required, StringLength(2000, MinimumLength = 1), NotWhitespace] string Description,
     [Required, Range(0, 999_999_999_999.99)] decimal? EstimatedCost);
 
 // The edit DTO has exactly the same shape and validation as the create DTO.
@@ -21,8 +24,8 @@ public record CreateMaintenanceRequestRequest(
 
 public record UpdateMaintenanceRequestRequest(
     [Required, Range(1, int.MaxValue)] int? SiteId,
-    [Required, StringLength(200, MinimumLength = 1)] string Title,
-    [Required, StringLength(2000, MinimumLength = 1)] string Description,
+    [Required, StringLength(200, MinimumLength = 1), NotWhitespace] string Title,
+    [Required, StringLength(2000, MinimumLength = 1), NotWhitespace] string Description,
     [Required, Range(0, 999_999_999_999.99)] decimal? EstimatedCost);
 
 // Approval/rejection share one endpoint and one DTO. Decision binds as a

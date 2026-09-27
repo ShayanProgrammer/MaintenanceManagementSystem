@@ -170,6 +170,19 @@ public class SiteAndOrganizationTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain(org2Sites!, s => s.Name == "North Warehouse");
     }
 
+    [Fact]
+    public async Task Whitespace_only_site_name_is_rejected()
+    {
+        var bob = await ClientForAsync(Bob);
+
+        // The service trims the name, so whitespace-only input would
+        // otherwise be stored as an empty site name.
+        var response = await bob.PostAsJsonAsync(
+            "/api/sites", new CreateSiteRequest("   ", null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     // ------------------------------------------------------------------
     // Authorization (Requester vs Approver)
     // ------------------------------------------------------------------

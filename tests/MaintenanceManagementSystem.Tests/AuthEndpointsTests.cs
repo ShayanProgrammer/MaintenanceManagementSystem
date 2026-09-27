@@ -60,6 +60,28 @@ public class AuthEndpointsTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Login_body_cannot_smuggle_identity_or_role()
+    {
+        // The DTO has no role/organization/user-id property, so extra JSON is
+        // ignored at binding: the returned identity always comes from the
+        // stored user record.
+        var response = await _client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = "alice.requester@northgate.example",
+            password = "Pass123$",
+            role = "Approver",
+            organizationId = 2,
+            userId = 99
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.Equal(1, body!.User.Id);
+        Assert.Equal(1, body.User.OrganizationId);
+        Assert.Equal("Requester", body.User.Role);
+    }
+
+    [Fact]
     public async Task Token_contains_user_organization_and_role_claims()
     {
         var response = await _client.PostAsJsonAsync(

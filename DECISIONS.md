@@ -562,3 +562,30 @@ beyond SQL Server + the API host.
   org-filtered) site keeps both the translation working and the
   isolation guarantees identical to the rest of the system.
 
+---
+
+# Phase 8 additions (security & test hardening)
+
+## 42. Whitespace-only text is rejected by a dedicated validation attribute; hardening audit changes nothing else
+
+- **Decision:** The phase-8 audit (tenant isolation, authorization,
+  validation, audit integrity, lifecycle, secrets/config) confirmed the
+  existing layered defenses everywhere else, so the only code change is a
+  validation tightening: request titles/descriptions and site names reject
+  whitespace-only values via a small custom `[NotWhitespace]` attribute
+  (empty/whitespace after trimming → 400), because the services trim these
+  fields and `"   "` would otherwise be stored as an empty value. It is
+  deliberately **not** implemented with `RegularExpressionAttribute`:
+  that attribute matches the **whole** string against the pattern
+  (implicit anchoring — `\S` would mean "exactly one non-whitespace
+  character and nothing else"), so the "contains at least one
+  non-whitespace character" rule would need an unreadable look-ahead
+  pattern. New focused tests pin the remaining invariants: identity/role
+  smuggling in the login body is ignored, missing completion
+  `actualCost` is a 400, and the `RequestLifecycle` map itself (allowed
+  transitions, terminal states, throw-on-illegal) is unit-tested.
+- **Reason:** Prefer fixing the one genuine gap with the smallest readable
+  change and pinning already-good invariants with tests, over adding
+  frameworks, repositories, or exhaustive coverage the task never asked
+  for.
+
