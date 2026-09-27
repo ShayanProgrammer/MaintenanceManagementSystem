@@ -84,4 +84,49 @@ Content-Type: application/json
   "description": "Updated description"
 }
 
+### List maintenance requests (any authenticated user; caller's org only)
+GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests
+Authorization: Bearer <token>
+Accept: application/json
+
+### Create maintenance request, cost at/below threshold (any user;
+### auto-approved by the system: status Approved, approvedByUserId null,
+### audited as RequestRaised + AutoApproved with a null actor)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "siteId": 1,
+  "title": "Hallway light replacement",
+  "description": "Two fittings out",
+  "estimatedCost": 250.00
+}
+
+### Create maintenance request, cost above threshold (any user;
+### status PendingApproval, audited as RequestRaised + SubmittedForApproval)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "siteId": 1,
+  "title": "HVAC compressor service",
+  "description": "Noisy compressor",
+  "estimatedCost": 1500.00
+}
+
+### Create maintenance request against another org's site (404, same as unknown id)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/maintenance-requests
+Authorization: Bearer <org1-token>
+Content-Type: application/json
+
+{
+  "siteId": 3,
+  "title": "Cross-tenant probe",
+  "description": "Must fail",
+  "estimatedCost": 50.00
+}
+
 ###
+

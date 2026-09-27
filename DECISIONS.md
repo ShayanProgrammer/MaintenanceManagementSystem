@@ -87,7 +87,10 @@ simple, reviewable, and testable.
   - The threshold rule runs whenever `EstimatedCost` is set (creation,
     or raiser edit while `PendingApproval`), so the rule exists in one
     code path.
-  - Threshold updates are Approver-only and audited.
+  - Threshold updates are Approver-only. They are **not** audited —
+    `AuditEntry` is request-specific (see decisions 10 and 31): a
+    threshold change is administrative configuration, not a request
+    state change or approval decision.
 - **Reason:** Gives the threshold real workflow meaning and keeps one
   canonical rule.
 
@@ -112,15 +115,20 @@ simple, reviewable, and testable.
 
 ## 10. Audit trail
 
-- **Decision:** Every state change and approval/rejection decision
-  produces exactly one `AuditEntry` (who / what / when: `ActorUserId`,
-  `Action`, `PreviousStatus`, `NewStatus`, `Details`, `TimestampUtc`)
-  written in the **same transaction** as the business change. Audit
+- **Decision:** Every maintenance-request state change and
+  approval/rejection decision produces exactly one `AuditEntry` (who /
+  what / when: `ActorUserId`, `Action`, `PreviousStatus`, `NewStatus`,
+  `Details`, `TimestampUtc`) written in the **same transaction** as the
+  business change. The audit scope in v1 is **request-specific**: request
+  lifecycle state changes and approval/rejection decisions (including
+  system auto-approvals). Organization configuration changes — such as
+  `ApprovalThreshold` updates — are administrative changes, not request
+  state changes, and produce no `AuditEntry` (decision 31). Audit
   records are append-only from the application perspective: write-only
   repository usage, no update/delete endpoints, no update/delete code
   paths. **No SQL trigger** unless a concrete requirement later justifies
-  it. System auto-approvals are audited with the submitting user as the
-  actor and noted as a system decision.
+  it. System auto-approvals are audited with a **null actor** as the
+  reserved marker for system-made decisions (decision 26).
 - **Reason:** Same-transaction writes make audit and state change
   atomic. Application-level append-only is sufficient for this
   evaluation and avoids database-specific surface; a DB-level guard can
@@ -291,3 +299,101 @@ beyond SQL Server + the API host.
   schema.
 - **Reason:** Avoids meaningless migration noise; the migration history
   stays truthful.
+
+---
+
+# Phase 4 additions (requests, threshold auto-approval, audit)
+
+## 25. Threshold rule is boundary-inclusive and evaluated at creation from the database
+
+- **Decision:** At creation the service loads the organization's
+  `ApprovalThreshold` from the database (never from the client) and applies:
+  `EstimatedCost <= threshold` -> **Approved** (auto), `EstimatedCost >
+  threshold` -> **PendingApproval**. Equality is deliberately inclusive.
+  `ActualCost` (recorded later at completion) never re-runs this rule — a
+  finished job whose actual spend exceeded the threshold does not go back
+  through approval (v1 policy, decided at kickoff).
+- **Reason:** The threshold is an organization setting that can change;
+  deciding from the stored value keeps the rule consistent, and a single
+  evaluation point (creation) keeps the workflow simple and auditable.
+
+## 26. Auto-approval is represented with no approver and an explicit system audit entry
+
+- **Decision:** An auto-approved request keeps `ApprovedByUserId = null`
+  (no human decided it — this also keeps "approvers never approve their own
+  requests" trivially true for auto-approvals) and `ApprovedAtUtc` set. The
+  audit trail records two entries: `RequestRaised` (actor = creator,
+  `null -> Raised`) and `AutoApproved` (**actor = null**, `Raised ->
+  Approved`, details naming the cost and threshold). Entering the queue is
+  recorded as `SubmittedForApproval` (actor = creator, `Raised ->
+  PendingApproval`). `null` as audit actor is the reserved marker for
+  system-made decisions.
+- **Reason:** Reporting must be able to distinguish "decided by nobody
+  (system rule)" from "decided by a person"; overloading a real approver id
+  would corrupt that distinction and the self-approval invariant.
+
+## 27. Status changes go through an explicit transition map
+
+- **Decision:** `RequestLifecycle` holds an explicit
+  from-status -> allowed-to-status map, and `ApplyTransition` is the only
+  way code changes `MaintenanceRequest.Status`; a transition not in the map
+  throws. The map currently contains the two creation-time transitions
+  (`Raised -> PendingApproval`, `Raised -> Approved`) and is extended as
+  manual approval/rejection and completion are implemented in later phases.
+- **Reason:** The agreed lifecycle stays machine-checked instead of
+  scattered across if-statements; illegal states (e.g. `Rejected ->
+  Approved`) become unrepresentable in application code.
+
+## 28. Audit rows are staged through one service and committed in the caller's transaction
+
+- **Decision:** `AuditService` is the single choke point for writing audit
+  entries: it only stages (`DbSet.Add`) rows onto the caller's
+  `DbContext`/`SaveChangesAsync`, copying `OrganizationId` from the request
+  and linking via the `MaintenanceRequest` navigation so EF resolves the FK
+  for not-yet-saved requests. There is no read, update, or delete path —
+  audit is append-only (no API, no service method). One `SaveChangesAsync`
+  in `MaintenanceRequestService.CreateAsync` commits the request and both
+  audit rows atomically. No SQL triggers are used.
+- **Reason:** Same-transaction audit cannot drift from the business change
+  (decision 10), and a single write choke point makes "append-only"
+  enforceable rather than aspirational.
+
+## 29. Request creation validates site ownership; responses carry no tenancy fields
+
+- **Decision:** `CreateMaintenanceRequestRequest` contains only `SiteId`,
+  `Title`, `Description`, `EstimatedCost` (all validated: SiteId >= 1,
+  Title <= 200, Description <= 2000, EstimatedCost >= 0, matching the EF
+  column limits). The service resolves the site with
+  `SiteId == requested AND OrganizationId == tenant org`; miss = **404**,
+  identical to an unknown site. The response DTO exposes site name and
+  raiser email for readability but no `OrganizationId` — every row in every
+  response belongs to the caller's organization by construction.
+- **Reason:** Same IDOR/enumeration protections as sites (decision 23),
+  applied to the request resource; the DTO shape prevents tenancy smuggling
+  at the binding layer.
+
+## 30. No schema migration in phase 4
+
+- **Decision:** No new migration. `MaintenanceRequests` and `AuditEntries`
+  were fully modeled in phase 1; phase 4 only populates them.
+- **Reason:** The migration history stays truthful — schema exists only
+  where the model actually changed.
+
+## 31. Audit scope is request-specific — threshold changes are not audited
+
+- **Decision:** `AuditEntry` is intentionally maintenance-request-specific
+  in v1: it records request lifecycle state changes and
+  approval/rejection decisions (including system auto-approvals), and
+  every row is attached to a `MaintenanceRequestId`. Changing an
+  organization's `ApprovalThreshold` is an administrative configuration
+  change, not a maintenance-request state change or approval decision,
+  so it produces no `AuditEntry`. This corrects the phase-1 wording
+  "threshold updates are … audited" (decision 7), which was overly broad.
+  If configuration-change auditing is ever required, it needs its own
+  mechanism (e.g. a general audit log) rather than a widening of
+  `AuditEntry`. No schema, API, or code change accompanies this — it is a
+  documentation-only scope clarification made during the phase-4 review.
+- **Reason:** The task requires auditing request lifecycle changes and
+  approval decisions; keeping `AuditEntry` request-specific matches that
+  requirement without inventing a second audit subsystem the evaluation
+  does not ask for.
