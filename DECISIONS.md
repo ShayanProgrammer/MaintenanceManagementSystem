@@ -189,3 +189,56 @@ All demo users share the password `Pass123$` (development only).
 Self-registration and user management UI, delete endpoints, refresh
 tokens, background jobs, caching, messaging, and any infrastructure
 beyond SQL Server + the API host.
+
+---
+
+# Phase 2 additions (authentication & authorization)
+
+## 18. JWT authentication
+
+- **Decision:** JWT bearer tokens containing claims `sub` (user id),
+  `org` (organization id), `role`, `email`. Inbound claim mapping is
+  disabled (`MapInboundClaims = false`) so claim names are identical on
+  both sides of the token; `RoleClaimType` is explicitly `"role"`.
+  Settings (`Jwt:Issuer`, `Jwt:Audience`, `Jwt:SigningKey`,
+  `Jwt:LifetimeMinutes`) are bound via the options pattern and validated
+  at host startup (`ValidateOnStart`, key >= 32 chars, HS256).
+  Development values live in user-secrets; the signing key is generated
+  randomly and never committed. Token lifetime default: 60 minutes; no
+  refresh tokens in v1. No user enumeration: unknown email and wrong
+  password return the identical empty 401.
+- **Reason:** Standard minimal bearer setup; explicit claim names avoid
+  silent remapping surprises and keep TenantContext parsing simple.
+
+## 19. Secure-by-default authorization
+
+- **Decision:** The authorization **fallback policy** requires an
+  authenticated user for every endpoint; only login, `/health`, and the
+  dev-only OpenAPI document are `[AllowAnonymous]`. An `ApproverOnly`
+  policy (`RequireRole("Approver")`) is registered now and will be
+  applied to approver-only endpoints from phase 3 on.
+- **Reason:** New endpoints are protected by default — forgetting
+  `[Authorize]` is impossible rather than a vulnerability.
+
+## 20. TenantContext
+
+- **Decision:** A scoped `TenantContext` service resolves
+  `UserId`/`OrganizationId`/`Role` from the validated JWT claims
+  (`IHttpContextAccessor`) once per request. Application code must use
+  it for all tenant scoping; phase 4 builds EF Core global query filters
+  on top of it. Tenant filters are intentionally not wired into the
+  DbContext yet (phase 4 scope).
+- **Reason:** Single server-side source of tenant identity; client
+  organization ids are never trusted.
+
+## 21. Integration test setup
+
+- **Decision:** Tests host the real `Program` via
+  `WebApplicationFactory` with environment `Testing` (skipping the
+  Development startup block), SQL Server replaced by in-memory SQLite
+  (schema from the EF model), and JWT settings supplied in-memory.
+  The `ApproverOnly` policy is currently tested through the
+  DI-registered `IAuthorizationService`; HTTP-level 403 tests follow in
+  phase 3 when approver-only endpoints exist.
+- **Reason:** Fast, self-contained integration tests over the real
+  pipeline; SQLite is adequate while no SQL Server–specific SQL exists.

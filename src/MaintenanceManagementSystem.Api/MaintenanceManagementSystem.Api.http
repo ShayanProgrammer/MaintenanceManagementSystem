@@ -1,6 +1,30 @@
 @MaintenanceManagementSystem.Api_HostAddress = http://localhost:5295
 
+### Health (anonymous)
 GET {{MaintenanceManagementSystem.Api_HostAddress}}/health
+Accept: application/json
+
+### Login as requester (Northgate Facilities)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "alice.requester@northgate.example",
+  "password": "Pass123$"
+}
+
+### Login as approver (Northgate Facilities)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "bob.approver@northgate.example",
+  "password": "Pass123$"
+}
+
+### Current identity (paste an accessToken from a login above in place of <token>)
+GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/me
+Authorization: Bearer <token>
 Accept: application/json
 
 ###
