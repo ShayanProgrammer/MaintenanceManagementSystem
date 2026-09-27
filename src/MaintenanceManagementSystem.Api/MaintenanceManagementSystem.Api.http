@@ -183,5 +183,13 @@ GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/audit?requestId=1
 Authorization: Bearer <token>
 Accept: application/json
 
+### Spend per site for Completed requests finished inside the inclusive
+### date range (any authenticated user; caller's org only; from/to required,
+### from <= to; zero-spend sites are omitted; rows ordered by siteId)
+GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/reports/spend?from=2026-01-01&to=2026-12-31
+Authorization: Bearer <token>
+Accept: application/json
+
 ###
+
 

@@ -517,3 +517,48 @@ beyond SQL Server + the API host.
 - **Decision:** No new migration. `AuditEntries` already carries every
   exposed field; the endpoint only reads it.
 - **Reason:** The migration history stays truthful.
+
+---
+
+# Phase 7 additions (organization spend report)
+
+## 40. Spend = ActualCost of Completed requests, dated by CompletedAtUtc, over an inclusive half-open UTC range
+
+- **Decision:** `GET /api/reports/spend?from=&to=` reports actual money
+  spent per site: only `Completed` requests contribute, and only their
+  `ActualCost` (null ActualCost never contributes, even though the
+  completion API always sets it — the null rule is defense in depth).
+  The range applies to `CompletedAtUtc` as a half-open UTC interval —
+  `[from 00:00:00Z, to+1day 00:00:00Z)` — so both boundary dates are
+  fully inclusive without time-of-day string comparisons. `from` and
+  `to` are required, must parse as dates, and `from > to` is a **400**
+  (never silently swapped); there is no organization parameter — the
+  organization is always the caller's. Sites with no qualifying spend in
+  the range are omitted (no zero-spend rows), and rows are ordered by
+  `SiteId` for deterministic output.
+- **Reason:** "Spend" must mean one thing across the system (decision 8's
+  variance philosophy), the half-open interval makes boundary semantics
+  exact, and rejecting (rather than fixing) an inverted range keeps the
+  report's meaning unambiguous.
+
+## 41. The aggregation runs entirely in the database; tenant isolation is layered
+
+- **Decision:** `ReportService.SpendBySiteAsync` issues a single SQL
+  query — filtering, per-site summing, zero-spend elimination, and
+  ordering all execute in the database; no request rows are ever loaded
+  into memory for the report and no caching is applied. EF Core 10 cannot
+  translate a `GROUP BY` whose key or surrounding join touches the
+  query-filtered `Site` side, so the aggregation is rooted at `Site` with
+  a filtered `SUM` subquery over its request navigation — semantically
+  identical grouping, fully translatable. Tenant isolation uses the same
+  layers as everywhere else (decision 22): the global query filters on
+  `Site` and `MaintenanceRequest` plus an explicit
+  `Site.OrganizationId == tenant organization` predicate. A foreign
+  tenant simply sees only its own sites' spend — or an empty list — and
+  no response row carries an `OrganizationId`. No schema migration:
+  phase 1 already has every column the report reads.
+- **Reason:** Reports must not become an accidental in-memory table scan
+  or a cross-tenant leak; rooting the query at the (already
+  org-filtered) site keeps both the translation working and the
+  isolation guarantees identical to the rest of the system.
+

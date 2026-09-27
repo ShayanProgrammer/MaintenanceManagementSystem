@@ -13,6 +13,7 @@ builder.Services.AddScoped<SiteService>();
 builder.Services.AddScoped<OrganizationService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<MaintenanceRequestService>();
+builder.Services.AddScoped<ReportService>();
 
 builder.Services.AddOpenApi();
 
