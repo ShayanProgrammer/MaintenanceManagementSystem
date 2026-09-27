@@ -1,0 +1,14 @@
+<header class="shell-header">
+  <span class="brand">Maintenance Management System</span>
+
+  @if (user(); as u) {
+    <span class="identity">
+      {{ u.email }} · {{ u.role }}
+      <button type="button" (click)="logout()">Log out</button>
+    </span>
+  }
+</header>
+
+<main class="shell-main">
+  <router-outlet />
+</main>

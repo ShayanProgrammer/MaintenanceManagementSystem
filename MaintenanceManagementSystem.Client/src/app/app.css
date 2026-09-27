@@ -1,0 +1,20 @@
+.shell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.brand {
+  font-weight: 600;
+}
+
+.identity button {
+  margin-left: 0.75rem;
+}
+
+.shell-main {
+  padding: 0 1rem;
+}

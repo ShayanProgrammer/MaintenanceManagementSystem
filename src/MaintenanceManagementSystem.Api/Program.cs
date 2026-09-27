@@ -17,6 +17,17 @@ builder.Services.AddScoped<ReportService>();
 
 builder.Services.AddOpenApi();
 
+// CORS for the Angular development server (phase 9): the SPA is served from
+// http://localhost:4200 and calls this API directly, so the browser enforces
+// same-origin policy. The policy is deliberately origin-restricted (no
+// wildcard) and only needs to allow the Authorization header the
+// interceptor attaches.
+builder.Services.AddCors(options => options.AddPolicy(
+    "AngularDevClient",
+    policy => policy.WithOrigins("http://localhost:4200")
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()));
+
 // JWT bearer authentication, secure-by-default authorization fallback
 // policy, ApproverOnly policy, JwtTokenService and TenantContext.
 builder.Services.AddAuthInfrastructure(builder.Configuration);
@@ -44,6 +55,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// CORS before authentication so preflight OPTIONS requests are answered
+// without a token.
+app.UseCors("AngularDevClient");
 
 app.UseAuthentication();
 

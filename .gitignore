@@ -35,3 +35,9 @@ publish/
 .DS_Store
 Thumbs.db
 *.swp
+
+# Angular client (MaintenanceManagementSystem.Client/)
+node_modules/
+dist/
+.angular/
+npm-debug.log*

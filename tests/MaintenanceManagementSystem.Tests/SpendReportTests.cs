@@ -368,7 +368,7 @@ public class SpendReportTests : IClassFixture<ApiFactory>
 
         // Carol sees exactly the Summit spend — and nothing from Northgate.
         var summitReport = await ReportAsync(carol, "2026-11-01", "2026-11-30");
-        Assert.Equal(1, summitReport.Count);
+        Assert.Single(summitReport);
         Assert.Equal(SummitPlazaSiteId, summitReport[0].SiteId);
         Assert.Equal(7000m, summitReport[0].TotalSpend);
         Assert.DoesNotContain(summitReport, s => s.SiteId == HqTowerSiteId);

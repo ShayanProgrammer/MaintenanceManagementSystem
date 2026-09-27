@@ -1,0 +1,20 @@
+<section class="home">
+  <h1>Home</h1>
+
+  @if (user(); as u) {
+    <dl>
+      <dt>Email</dt>
+      <dd>{{ u.email }}</dd>
+
+      <dt>Role</dt>
+      <dd>{{ u.role }}</dd>
+
+      <dt>Organization</dt>
+      <dd>#{{ u.organizationId }}</dd>
+    </dl>
+  } @else {
+    <p>Loading your information…</p>
+  }
+
+  <p>Maintenance request screens will be added in a later phase.</p>
+</section>

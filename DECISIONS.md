@@ -589,3 +589,38 @@ beyond SQL Server + the API host.
   frameworks, repositories, or exhaustive coverage the task never asked
   for.
 
+---
+
+# Phase 9.1 additions (Angular client foundation & authentication)
+
+## 43. Angular 21 client: minimal signal-based auth, no frontend security
+
+- **Decision:** `MaintenanceManagementSystem.Client` is Angular 21
+  (standalone, signals, zoneless) — CLI pinned to major 21 because the
+  installed Node 22.16.0 is below Angular 22's engine floor; npm's
+  arborist crash on the local npm 10.9.2 was worked around by installing
+  with `npx npm@11` (no global tooling changed). Auth is deliberately
+  minimal: JWT persisted in `localStorage`, a signal-backed
+  `AuthService` as the single source of state, a functional interceptor
+  (Bearer attach + 401 → clear session, redirect to `/login` with
+  `returnUrl`), and a `CanActivateFn` guard returning a `UrlTree`. On
+  startup the shell calls `/api/auth/me` to validate a persisted token.
+  Logout is client-side only (stateless JWT; no server endpoint).
+  Backend change is one CORS policy (`AngularDevClient`, origin
+  `http://localhost:4200`, applied before authentication so preflight
+  OPTIONS is anonymous).
+- **Reason:** The backend remains the security authority; the guard and
+  interceptor are UX affordances only. Anything richer (refresh tokens,
+  NgRx, UI kits) was explicitly out of scope for this phase.
+
+## 44. API base URL is an environment constant, not a build-time secret
+
+- **Decision:** The client reads `environment.apiBaseUrl`
+  (`http://localhost:5295/api`) and the interceptor only attaches the
+  Authorization header to requests under that prefix. No secrets live in
+  the client or its repository files.
+- **Reason:** Keeps one obvious place to swap for a reverse-proxied
+  relative path later, and prevents leaking the token to third-party
+  origins if external URLs are ever requested.
+
+
