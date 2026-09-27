@@ -640,5 +640,22 @@ beyond SQL Server + the API host.
   threshold 1000), while 2400.00 auto-approves under Summit's 2500
   threshold — per-organization decisions the frontend merely renders.
 
+## 46. Approval UI actions are visibility-only; every rule is re-enforced server-side
+
+- **Decision:** The phase 9.3 approve/reject actions live in the existing
+  request list (no duplicate page). The client shows Approve/Reject only
+  when (role === Approver) && (status === 'PendingApproval') && (request
+  not raised by the current user) — a presentation rule only; the payload
+  is exactly `{ decision }` / `{ decision, reason }` and the backend
+  re-enforces ApproverOnly, no-self-approval, lifecycle and tenancy
+  (403/409/404/400 verified live). A 409 (someone decided first) shows a
+  stale-state message and reloads the list; rejection uses an inline row
+  form whose required reason mirrors the backend contract (max 1000).
+- **Reason:** Hiding controls for requests the user may not decide keeps
+  the UX honest without inventing a second authorization layer; relying
+  on the server for every rule keeps the client from becoming a security
+  boundary.
+
+
 
 

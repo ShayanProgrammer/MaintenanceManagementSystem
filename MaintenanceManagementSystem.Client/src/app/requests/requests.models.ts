@@ -35,3 +35,7 @@ export interface CreateMaintenanceRequest {
   description: string;
   estimatedCost: number;
 }
+
+/// <summary>String values the backend's ApprovalDecision enum binds from
+/// (case-insensitive, via JsonStringEnumConverter).</summary>
+export type ApprovalDecision = 'approve' | 'reject';

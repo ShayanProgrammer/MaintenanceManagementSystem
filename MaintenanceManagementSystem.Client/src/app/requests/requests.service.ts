@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import {
+  ApprovalDecision,
   CreateMaintenanceRequest,
   MaintenanceRequest,
   Site
@@ -38,5 +39,22 @@ export class RequestsService {
   /// create-form dropdown.</summary>
   listSites(): Observable<Site[]> {
     return this.http.get<Site[]>(`${this.apiBaseUrl}/sites`);
+  }
+
+  /// <summary>POST /api/maintenance-requests/{id}/approvals — the backend
+  /// enforces approver-only, no-self-approval, PendingApproval-only and
+  /// tenancy; the payload carries only the decision (+ reason for a
+  /// rejection), nothing server-owned.</summary>
+  decide(
+    id: number,
+    decision: ApprovalDecision,
+    reason?: string
+  ): Observable<MaintenanceRequest> {
+    const body: { decision: ApprovalDecision; reason?: string } = { decision };
+    if (reason !== undefined) {
+      body.reason = reason;
+    }
+    return this.http.post<MaintenanceRequest>(
+      `${this.apiBaseUrl}/maintenance-requests/${id}/approvals`, body);
   }
 }

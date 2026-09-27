@@ -43,3 +43,28 @@ th {
 .description {
   max-width: 22rem;
 }
+
+.actions {
+  white-space: nowrap;
+}
+
+.actions button + button {
+  margin-left: 0.5rem;
+}
+
+.reject-row form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.reject-row input {
+  font: inherit;
+  padding: 0.3rem;
+}
+
+.field-error {
+  color: #c0392b;
+  margin: 0;
+  font-size: 0.9rem;
+}
