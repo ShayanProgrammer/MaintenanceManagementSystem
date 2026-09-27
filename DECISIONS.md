@@ -31,6 +31,13 @@ simple, reviewable, and testable.
   evaluation signal. Folder separation preserves testable seams
   (domain rules do not depend on EF or HTTP) and can be split into
   projects later without logic changes.
+- **Data access — EF Core vs Dapper:** EF Core (LINQ) is used directly;
+  no Dapper/raw SQL and no repository wrapper on top. Migrations,
+  compile-checked queries, global query filters (the primary
+  tenant-isolation mechanism, decision 4), and integration tests against
+  in-memory SQLite all come from the ORM, and nothing in the requirements
+  needs hand-tuned SQL that would justify maintaining a second
+  data-access stack.
 
 ## 3. API-first development
 
