@@ -4,7 +4,7 @@
 GET {{MaintenanceManagementSystem.Api_HostAddress}}/health
 Accept: application/json
 
-### Login as requester (Northgate Facilities)
+### Login as requester (Northgate Facilities, org 1)
 POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/login
 Content-Type: application/json
 
@@ -13,7 +13,7 @@ Content-Type: application/json
   "password": "Pass123$"
 }
 
-### Login as approver (Northgate Facilities)
+### Login as approver (Northgate Facilities, org 1)
 POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/login
 Content-Type: application/json
 
@@ -22,9 +22,66 @@ Content-Type: application/json
   "password": "Pass123$"
 }
 
+### Login as requester (Summit Property Group, org 2)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "carol.requester@summit.example",
+  "password": "Pass123$"
+}
+
+### Login as approver (Summit Property Group, org 2)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "dave.approver@summit.example",
+  "password": "Pass123$"
+}
+
 ### Current identity (paste an accessToken from a login above in place of <token>)
 GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/auth/me
 Authorization: Bearer <token>
 Accept: application/json
+
+### Current organization (any authenticated user; always the caller's own org)
+GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/organizations/current
+Authorization: Bearer <token>
+Accept: application/json
+
+### Update approval threshold (approver only; caller's own org)
+PUT {{MaintenanceManagementSystem.Api_HostAddress}}/api/organizations/current/threshold
+Authorization: Bearer <approver-token>
+Content-Type: application/json
+
+{
+  "approvalThreshold": 1500.00
+}
+
+### List sites (any authenticated user; caller's org only)
+GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/sites
+Authorization: Bearer <token>
+Accept: application/json
+
+### Create site (approver only; org is assigned server-side from the token)
+POST {{MaintenanceManagementSystem.Api_HostAddress}}/api/sites
+Authorization: Bearer <approver-token>
+Content-Type: application/json
+
+{
+  "name": "New Warehouse",
+  "description": "North warehouse"
+}
+
+### Update site (approver only; another org's id returns 404)
+PUT {{MaintenanceManagementSystem.Api_HostAddress}}/api/sites/1
+Authorization: Bearer <approver-token>
+Content-Type: application/json
+
+{
+  "name": "HQ Tower (renamed)",
+  "description": "Updated description"
+}
 
 ###

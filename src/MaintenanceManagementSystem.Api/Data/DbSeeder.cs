@@ -18,7 +18,11 @@ public static class DbSeeder
 
     public static async Task SeedAsync(AppDbContext db)
     {
-        if (await db.Organizations.AnyAsync())
+        // The seeder runs outside any authenticated request (system scope),
+        // so tenant query filters must be bypassed here. With no tenant
+        // identity a filtered Organizations query would match zero rows and
+        // re-seed duplicates on every startup.
+        if (await db.Organizations.IgnoreQueryFilters().AnyAsync())
         {
             return;
         }

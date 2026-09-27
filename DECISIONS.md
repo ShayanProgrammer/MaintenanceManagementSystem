@@ -225,9 +225,12 @@ beyond SQL Server + the API host.
 - **Decision:** A scoped `TenantContext` service resolves
   `UserId`/`OrganizationId`/`Role` from the validated JWT claims
   (`IHttpContextAccessor`) once per request. Application code must use
-  it for all tenant scoping; phase 4 builds EF Core global query filters
-  on top of it. Tenant filters are intentionally not wired into the
-  DbContext yet (phase 4 scope).
+  it for all tenant scoping; EF Core global query filters (phase 3,
+  decision 22) are built on top of it. Since phase 3 the identity
+  properties are nullable: outside an authenticated request they are
+  null (default-deny), and code that must have an identity calls
+  `RequireOrganizationId()` / `RequireUserId()` / `RequireRole()`,
+  which fail loudly instead of silently proceeding without a tenant.
 - **Reason:** Single server-side source of tenant identity; client
   organization ids are never trusted.
 
@@ -237,8 +240,54 @@ beyond SQL Server + the API host.
   `WebApplicationFactory` with environment `Testing` (skipping the
   Development startup block), SQL Server replaced by in-memory SQLite
   (schema from the EF model), and JWT settings supplied in-memory.
-  The `ApproverOnly` policy is currently tested through the
-  DI-registered `IAuthorizationService`; HTTP-level 403 tests follow in
-  phase 3 when approver-only endpoints exist.
+  Since phase 3, ApproverOnly is additionally covered by HTTP-level 403
+  integration tests against the real endpoints.
 - **Reason:** Fast, self-contained integration tests over the real
   pipeline; SQLite is adequate while no SQL Server–specific SQL exists.
+
+---
+
+# Phase 3 additions (sites + organization threshold)
+
+## 22. Tenant isolation via EF Core global query filters
+
+- **Decision:** `AppDbContext` takes `TenantContext` as a scoped
+  constructor dependency; `OnModelCreating` adds global query filters
+  for `Organization` (`Id == tenant org`), `Site`,
+  `MaintenanceRequest`, and `AuditEntry`
+  (`OrganizationId == tenant org`). The filter reads the **current
+  request's** tenant value at query-execution time, so the cached EF
+  model remains correct across requests from different organizations.
+  A null tenant identity (seeding, login, background work) makes the
+  comparison match **zero rows** — default-deny; a missing identity can
+  never produce an unfiltered, all-tenants query. Services additionally
+  keep explicit org predicates on fetch-by-id queries (defense in
+  depth). The `User` entity is intentionally unfiltered (login runs
+  pre-authentication; no user endpoints in v1). The development seeder
+  bypasses filters with `IgnoreQueryFilters()` because it runs with
+  system privileges outside any request.
+- **Reason:** Tenant isolation is enforced in the data layer by
+  construction rather than by remembering a WHERE clause in every
+  endpoint, while remaining simple and framework-free.
+
+## 23. Cross-tenant id handling
+
+- **Decision:** There is no `/api/organizations/{id}` route at all — an
+  organization is only addressable as `current`. Site updates look up
+  with `Id == requestedId AND OrganizationId == tenant org` and return
+  **404** for other tenants' sites (identical to unknown ids), so
+  existence of foreign data is never revealed. Create/update request
+  DTOs contain **no `OrganizationId` property at all** — extra fields in
+  request JSON are ignored by binding and the tenant is assigned
+  server-side from `TenantContext`.
+- **Reason:** IDOR-by-URL has no target; 404 avoids resource
+  enumeration; DTO shape makes tenancy smuggling impossible.
+
+## 24. No schema migration in phase 3
+
+- **Decision:** No new migration. The phase required no model changes —
+  `Sites.OrganizationId`, `Organizations.ApprovalThreshold`, and all
+  indexes already exist from phase 1. Query filters affect queries, not
+  schema.
+- **Reason:** Avoids meaningless migration noise; the migration history
+  stays truthful.

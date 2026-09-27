@@ -68,6 +68,10 @@ public class AuthController : ControllerBase
     public IActionResult Me([FromServices] TenantContext tenant)
     {
         var email = User.FindFirstValue(AppClaimTypes.Email) ?? string.Empty;
-        return Ok(new MeResponse(tenant.UserId, tenant.OrganizationId, email, tenant.Role.ToString()));
+        return Ok(new MeResponse(
+            tenant.RequireUserId(),
+            tenant.RequireOrganizationId(),
+            email,
+            tenant.RequireRole().ToString()));
     }
 }
