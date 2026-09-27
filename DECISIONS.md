@@ -487,3 +487,33 @@ beyond SQL Server + the API host.
   the terminal-state model existed from phase 1; phase 5 only exercises
   them.
 - **Reason:** The migration history stays truthful.
+
+---
+
+# Phase 6 additions (read-only audit API)
+
+## 38. Audit records are exposed through a single read-only, tenant-scoped endpoint
+
+- **Decision:** `GET /api/audit?requestId=` is the only API surface for
+  audit: authenticated (both roles — the fallback policy suffices; no
+  Approver-only requirement), returning only the caller's organization's
+  entries as projected `AuditEntryDto`s (never EF entities). Tenant
+  isolation comes from the existing global query filter — no
+  `IgnoreQueryFilters()` in application code — with the explicit
+  organization predicate kept on the requestId path (decision 22). A
+  foreign or unknown `requestId` returns **200 with an empty list**,
+  indistinguishable, so other tenants' audit existence is never revealed.
+  Results are ordered `TimestampUtc, then Id`. Writes remain possible only
+  inside the business transaction via `AuditService.Stage`; there is no
+  POST/PUT/PATCH/DELETE audit route, and `ActorUserId`/`ActorEmail` are
+  null for system decisions (decision 26).
+- **Reason:** The audit trail needs to be visible to the people it
+  protects, but only through a read-only, org-bounded lens; extending the
+  existing `AuditService` (rather than adding a second abstraction) keeps
+  one choke point for both the write and the one sanctioned read.
+
+## 39. No schema migration in phase 6
+
+- **Decision:** No new migration. `AuditEntries` already carries every
+  exposed field; the endpoint only reads it.
+- **Reason:** The migration history stays truthful.

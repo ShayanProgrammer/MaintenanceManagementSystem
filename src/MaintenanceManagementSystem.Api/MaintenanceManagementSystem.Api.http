@@ -171,5 +171,17 @@ Content-Type: application/json
   "actualCost": 950.00
 }
 
+### Read the caller's organization's audit trail (chronological; any
+### authenticated user; foreign orgs are invisible)
+GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/audit
+Authorization: Bearer <token>
+Accept: application/json
+
+### Read one request's audit history (the request must belong to the
+### caller's organization; a foreign or unknown id returns an empty list)
+GET {{MaintenanceManagementSystem.Api_HostAddress}}/api/audit?requestId=1
+Authorization: Bearer <token>
+Accept: application/json
+
 ###
 
